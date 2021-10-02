@@ -59,6 +59,7 @@ function face_left_right!(
         face.varₗ[👉.ρ], face.varₗ[👉.Hₜ], face.varₗ[👉.c] = 
         faceEOS!(face.varₗ[👉.p], 
         face.varₗ[👉.u], face.varₗ[👉.v], face.varₗ[👉.w], face.varₗ[👉.T], face.varₗ[👉.Y₁])
+
         
         face.varᵣ[👉.ρ], face.varᵣ[👉.Hₜ], face.varᵣ[👉.c] = 
         faceEOS!(face.varᵣ[👉.p], 

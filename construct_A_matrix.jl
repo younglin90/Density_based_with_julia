@@ -64,7 +64,7 @@ function construct_A_matrix_explicit!(
         P[5, 1] = β*Hₜ + ρ*∂Hₜ∂p - 1.0
         P[6, 1] = β*Y₁
 
-        A[i, :, :] = P[:, :]./cells[i].var[👉.Δτ] + 1.5*T[:, :]./👉.Δt
+        A[i, :, :] = T[:, :]./👉.Δt
 
 
     end

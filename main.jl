@@ -21,17 +21,20 @@ function main()
         #⬜
         #◽
 
-    Nx = 160
+    Nx = 100
     Ny = 1
     Nz = 1
     Lx = 1.0
-    Ly = 0.1
-    Lz = 0.1
+    Ly = 1.0
+    Lz = 0.5
     realMaxIter = 1000000
     pseudoMaxIter = 30
     pseudoMaxResidual = -4.0
 
-    CFL = 0.00000001
+
+    iterCFL0 = 0
+    CFL0 = 0.0001
+    CFL = 0.1
     Δt = 1.e-7
     Lco = 1.0
     Uco = 500.0
@@ -104,26 +107,84 @@ function main()
         cells[i].var[👉.Y₁] = 0.0
     end
 =#
-    # 1D high pressure water & low pressure air
+
+#=
+    # 1D high pressure air & low pressure water
     for cell in cells
-        if cell.x < 0.7
+        if cell.x < 0.5
             cell.var[👉.p] = 1.e9
             cell.var[👉.u] = 0.0
             cell.var[👉.v] = 0.0
             cell.var[👉.w] = 0.0
             cell.var[👉.T] = 300.0
-            cell.var[👉.Y₁] = 1.0
+            cell.var[👉.Y₁] = 1.e-5
+            cell.var[👉.α₁] = 0.0
+        else
+            cell.var[👉.p] = 1.e4
+            cell.var[👉.u] = 0.0
+            cell.var[👉.v] = 0.0
+            cell.var[👉.w] = 0.0
+            cell.var[👉.T] = 300.0
+            cell.var[👉.Y₁] = 1.0 - 1.e-5
             cell.var[👉.α₁] = 1.0
+        end
+    end
+=#
+
+#=
+
+    # 1D high pressure water & low pressure air
+    for cell in cells
+        if cell.x < 0.5
+            cell.var[👉.p] = 1.0
+            cell.var[👉.u] = 0.0
+            cell.var[👉.v] = 0.0
+            cell.var[👉.w] = 0.0
+            cell.var[👉.T] = 0.003484
+            cell.var[👉.Y₁] = 0.0
+            cell.var[👉.α₁] = 0.0
+        else
+            cell.var[👉.p] = 0.1
+            cell.var[👉.u] = 0.0
+            cell.var[👉.v] = 0.0
+            cell.var[👉.w] = 0.0
+            cell.var[👉.T] = 0.002787
+            cell.var[👉.Y₁] = 0.0
+            cell.var[👉.α₁] = 0.0
+        end
+    end
+
+=#
+
+    # One-dimensional helium-bubble in air
+    for cell in cells
+        
+        if cell.x < 0.3
+            cell.var[👉.p] = 1.245e5
+            cell.var[👉.u] = 55.33
+            cell.var[👉.v] = 0.0
+            cell.var[👉.w] = 0.0
+            cell.var[👉.T] = 319.48
+            cell.var[👉.Y₁] = 0.0
+            cell.var[👉.α₁] = 0.0
         else
             cell.var[👉.p] = 1.e5
             cell.var[👉.u] = 0.0
             cell.var[👉.v] = 0.0
             cell.var[👉.w] = 0.0
-            cell.var[👉.T] = 6.968
+            cell.var[👉.T] = 300.0
             cell.var[👉.Y₁] = 0.0
             cell.var[👉.α₁] = 0.0
         end
+
+        if 0.5 < cell.x < 0.7
+            cell.var[👉.Y₁] = 1.0
+            cell.var[👉.α₁] = 1.0
+        end
     end
+
+
+
     
 
     # EOS
@@ -142,37 +203,26 @@ function main()
     )
         println("real-time Step: $(👉.realIter) \t Time: $(👉.time)")
 
-        # Qⁿ, Qⁿ⁻¹
-        if 👉.realIter == 1
-            update_real_conservative0!(👉, cells)
+        if 👉.realIter < iterCFL0
+            👉.CFL = CFL0
         else
-            update_real_conservative!(👉, cells)
+            👉.CFL = CFL
+        end
+        
+        for cell in cells
+            cell.Qᵐ[1] = cell.var[👉.p]
+            cell.Qᵐ[2] = cell.var[👉.u]#*cell.var[👉.u]
+            cell.Qᵐ[3] = cell.var[👉.v]#*cell.var[👉.v]
+            cell.Qᵐ[4] = cell.var[👉.w]#*cell.var[👉.w]
+            cell.Qᵐ[5] = cell.var[👉.T]#*cell.var[👉.Hₜ]-cell.var[👉.p]
+            cell.Qᵐ[6] = cell.var[👉.Y₁]#*cell.var[👉.Y₁]
         end
 
-        if 👉.realIter < 2
-            👉.CFL = 0.0000001
-        else
-            👉.CFL = 0.0000001
-        end
-        👉.pseudoMaxIter = 50
 
+        for RK3 in 1:1
 
-        👉.pseudoIter = 1
-        👉.residual = 10000.0
-        residual0 = 10000.0
-        while(
-            👉.pseudoIter ≤ 👉.pseudoMaxIter &&
-            👉.residual-residual0 ≥ 👉.pseudoMaxResidual
-        )
-        #=
-            if 👉.pseudoIter == 1
-                👉.CFL = 0.0000001
-            else
-                👉.CFL = 0.1
-            end
-        =#
             # time-step
-            timestep!(👉, cells)
+            timestep!(👉, cells, Lx/Nx, Ly/Ny, Lz/Nz)
 
             # face left, Right
             face_left_right!(👉, cells, faces, faces_internal, faces_boundary, 
@@ -184,11 +234,7 @@ function main()
             # flux
             flux!(👉, B, cells, faces_internal, faces_boundary)
 
-            # Qᵐ
-            update_pseudo_conservative!(👉, cells)
-
-            # real time terms
-            real_time_terms!(👉, B, cells)
+            #println(B)
 
             # sparse A matrix
             A = zeros(Float64, length(cells), 6, 6)
@@ -200,22 +246,12 @@ function main()
             #linear_solver_implicit!(A, x, B)
             linear_solver_explicit!(A, x, B)
 
-            # residual norm
-            👉.residual = residual_norm!(x, cells)
-            if 👉.pseudoIter == 1
-                residual0 = 👉.residual
-            end
-            
             # update primitive
-            update_primitive!(👉, x, cells)
+            update_primitive!(👉, x, cells, RK3)
             
             # EOS
             EOS!(👉, cells)
             
-        
-            println("- pseudo-time Step: $(👉.pseudoIter) \t",
-            "log₁₀|ΔR|₂: $(round((👉.residual-residual0),digits=8))")
-
             gr()
             X = zeros(Float64, length(cells), 1)
             Y = zeros(Float64, length(cells), 6)
@@ -229,7 +265,7 @@ function main()
                 Y[i,6] = cells[i].var[👉.c]
                 
             end
-            push!(plt2,total_iter,👉.residual-residual0)
+            #push!(plt2,total_iter,👉.residual-residual0)
             plt = plot(X,Y,layout = 
             grid(3, 2),
             label = ["p" "u" "T" "Y₁" "ρ" "c"] )
@@ -237,12 +273,8 @@ function main()
             grid(2, 1, heights=[0.8 ,0.2]))
 
             gui()
-            #sleep(0.000001)
-
-            👉.pseudoIter += 1
-            total_iter += 1.0
-
         end
+
 
         👉.realIter += 1
         👉.time += 👉.Δt

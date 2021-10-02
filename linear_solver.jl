@@ -4,6 +4,9 @@ function linear_solver_explicit!(
     B::Array{Float64}
 )
 
+
+
+
 #@time begin
     n = length(A[:, 1, 1])
     for i in 1:n
@@ -11,6 +14,7 @@ function linear_solver_explicit!(
         #x[i, :] = invA[:, :]*B[i, :]
         
         x[i, :] = A[i, :, :]\B[i, :]
+
     end
 #end
 
