@@ -7,6 +7,26 @@ function flux!(
 )
 
 
+	∂Δp∂x0 = zeros(Float64, length(cells), 3)
+	for face in faces_internal
+		pₙ = 0.5 * (cells[face.owner].var[👉.p] + cells[face.neighbour].var[👉.p])
+		∂Δp∂x0[face.owner, 1] += pₙ * face.n̂[1] * face.ΔS / cells[face.owner].Ω
+		∂Δp∂x0[face.owner, 2] += pₙ * face.n̂[2] * face.ΔS / cells[face.owner].Ω
+		∂Δp∂x0[face.owner, 3] += pₙ * face.n̂[3] * face.ΔS / cells[face.owner].Ω
+		∂Δp∂x0[face.neighbour, 1] -= pₙ * face.n̂[1] * face.ΔS / cells[face.neighbour].Ω
+		∂Δp∂x0[face.neighbour, 2] -= pₙ * face.n̂[2] * face.ΔS / cells[face.neighbour].Ω
+		∂Δp∂x0[face.neighbour, 3] -= pₙ * face.n̂[3] * face.ΔS / cells[face.neighbour].Ω
+	end
+
+	for face in faces_boundary
+		pₙ = cells[face.owner].var[👉.p]
+		∂Δp∂x0[face.owner, 1] += pₙ * face.n̂[1] * face.ΔS / cells[face.owner].Ω
+		∂Δp∂x0[face.owner, 2] += pₙ * face.n̂[2] * face.ΔS / cells[face.owner].Ω
+		∂Δp∂x0[face.owner, 3] += pₙ * face.n̂[3] * face.ΔS / cells[face.owner].Ω
+	end
+
+
+
 	
 	shock_sensor = shock_discontinuity_sensing_term!(
 		👉,cells,faces_internal,faces_boundary
@@ -28,14 +48,32 @@ function flux!(
 		preRs = abs(pᵣ) + 0.1 * ρᵣ*cᵣ*cᵣ
 		w₂ = min(preLs/preRs,preRs/preLs)
 
+
+        centerₗ = [cells[face.owner].x, cells[face.owner].y, cells[face.owner].z]
+        centerᵣ = [cells[face.neighbour].x, cells[face.neighbour].y, cells[face.neighbour].z]
+        ΔLR = norm(centerᵣ - centerₗ)
+
+        ρˢ = 1.0 / (0.5/ρₗ + 0.5/ρᵣ)
+        d̂ = 👉.Δt / ρˢ
+        # Rhie-Chow
+		Uₙ = 0.0
+        Uₙ += d̂ * ρˢ * 0.5 / ρₗ * ∂Δp∂x0[face.owner, 1] * face.n̂[1]
+        Uₙ += d̂ * ρˢ * 0.5 / ρₗ * ∂Δp∂x0[face.owner, 2] * face.n̂[2]
+        Uₙ += d̂ * ρˢ * 0.5 / ρₗ * ∂Δp∂x0[face.owner, 3] * face.n̂[3]
+        Uₙ += d̂ * ρˢ * 0.5 / ρᵣ * ∂Δp∂x0[face.neighbour, 1] * face.n̂[1]
+        Uₙ += d̂ * ρˢ * 0.5 / ρᵣ * ∂Δp∂x0[face.neighbour, 2] * face.n̂[2]
+        Uₙ += d̂ * ρˢ * 0.5 / ρᵣ * ∂Δp∂x0[face.neighbour, 3] * face.n̂[3]
+        Uₙ -= d̂ * (pᵣ-pₗ) / ΔLR
+		
+
         flux = zeros(Float64, 6, 1)
-        flux = YYL_Riemann(
+        flux = KT_KNP(
             face.varₗ[👉.p],face.varₗ[👉.u],face.varₗ[👉.v],face.varₗ[👉.w],
             face.varₗ[👉.T],face.varₗ[👉.Y₁],face.varₗ[👉.ρ],face.varₗ[👉.Hₜ],face.varₗ[👉.c],
             face.varᵣ[👉.p],face.varᵣ[👉.u],face.varᵣ[👉.v],face.varᵣ[👉.w],
             face.varᵣ[👉.T],face.varᵣ[👉.Y₁],face.varᵣ[👉.ρ],face.varᵣ[👉.Hₜ],face.varᵣ[👉.c],
             👉.Lco,👉.Uco,👉.Δt,
-            w₁, w₂, cpi2,
+            w₁, w₂, cpi2, Uₙ,
             face.n̂[1],face.n̂[2],face.n̂[3]
             )
 
@@ -48,14 +86,16 @@ function flux!(
 
     for face in faces_boundary
 
+		Uₙ = 0.0
+
         flux = zeros(Float64, 6, 1)
-        flux = YYL_Riemann(
+        flux = KT_KNP(
             face.varₗ[👉.p],face.varₗ[👉.u],face.varₗ[👉.v],face.varₗ[👉.w],
             face.varₗ[👉.T],face.varₗ[👉.Y₁],face.varₗ[👉.ρ],face.varₗ[👉.Hₜ],face.varₗ[👉.c],
             face.varᵣ[👉.p],face.varᵣ[👉.u],face.varᵣ[👉.v],face.varᵣ[👉.w],
             face.varᵣ[👉.T],face.varᵣ[👉.Y₁],face.varᵣ[👉.ρ],face.varᵣ[👉.Hₜ],face.varᵣ[👉.c],
             👉.Lco,👉.Uco,👉.Δt,
-            1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, Uₙ,
             face.n̂[1],face.n̂[2],face.n̂[3]
             )
 
@@ -109,6 +149,125 @@ function shock_discontinuity_sensing_term!(
 
 
 end
+
+
+
+
+function YYL_Riemann2(
+    pₗ,uₗ,vₗ,wₗ,Tₗ,Y₁ₗ,ρₗ,Hₜₗ,cₗ,
+    pᵣ,uᵣ,vᵣ,wᵣ,Tᵣ,Y₁ᵣ,ρᵣ,Hₜᵣ,cᵣ,
+    Lco,Uco,Δt,
+    w₁,w₂,cpi2, Uₙ,
+    nx,ny,nz
+)
+
+	Uₙₗ = uₗ*nx + vₗ*ny + wₗ*nz
+	Uₙᵣ = uᵣ*nx + vᵣ*ny + wᵣ*nz
+
+	c̄ = 0.5*(cₗ + cᵣ)
+	#M̄ₖ = √(ū^2 + v̄^2 + w̄^2)/c̄
+	Mₗ = Uₙₗ/c̄
+	Mᵣ = Uₙᵣ/c̄
+	# calculate M+ and P+ for left state
+	Mₗ⁺ = M_func(Mₗ,1.0,0.125)
+	p⁺ = pre_func(Mₗ,1.0,0.1875)
+	# calculate M- and P- for left state
+	Mᵣ⁻ = M_func(Mᵣ,-1.0,0.125)
+	p⁻ = pre_func(Mᵣ,-1.0,0.1875)
+	M̄ = (ρₗ*abs(Mₗ)+ρᵣ*abs(Mᵣ)) / (ρₗ+ρᵣ)
+	KLR = sqrt(0.5*(uₗ^2+vₗ^2+wₗ^2+uᵣ^2+vᵣ^2+wᵣ^2))
+	g = 1.0 + max(min(Mₗ,0.0),-1.0)*min(max(Mᵣ,0.0),1.0)
+	D_L = Mₗ + (1.0-g)*abs(Mₗ)
+	D_R = Mᵣ - (1.0-g)*abs(Mᵣ)
+	D_rho = M̄*g
+
+	preLs = abs(pₗ) + 0.1 * ρₗ*cₗ*cₗ
+	preRs = abs(pᵣ) + 0.1 * ρᵣ*cᵣ*cᵣ
+	w = 1.0 - min(preLs/preRs,preRs/preLs)^2.0
+
+	ps = p⁺*pₗ+p⁻*pᵣ
+	pll = 0.0
+	if 3.0/4.0 <= min(pₗ/pᵣ,pᵣ/pₗ) && 1.0 > min(pₗ/pᵣ,pᵣ/pₗ) 
+		pll=4.0*min(pₗ/pᵣ,pᵣ/pₗ)-3.0
+	end
+	fL = 0.0
+	if abs(Mₗ) <= 1.0 
+		fL = (pₗ/ps-1.0)*pll*abs(Mₗ⁺)*min(1.0,( (abs(Uₙₗ)/c̄) )^0.25)
+	end
+		
+	fR = 0.0
+	if abs(Mᵣ) <= 1.0
+		fR = (pₗ/ps-1.0)*pll*abs(Mᵣ⁻)*min(1.0,( (abs(Uₙᵣ)/c̄) )^0.25)
+	end
+
+	MPP = Mₗ⁺+Mᵣ⁻
+	MLP_AUSM = 0.5*(MPP+abs(MPP))
+	MRM_AUSM = 0.5*(MPP-abs(MPP))
+
+	MLP_SLAU = 0.5*(D_L+D_rho)
+	MRM_SLAU = 0.5*(D_R-D_rho)
+
+	fa1 = w
+
+	MLPL = fa1*MLP_AUSM + (1.0-fa1)*MLP_SLAU
+	MRMR = fa1*MRM_AUSM + (1.0-fa1)*MRM_SLAU
+
+	Mdash = min(1.0,KLR/c̄)
+
+	ṁ = ρₗ*c̄*MLPL + ρᵣ*c̄*MRMR - 
+		0.5*
+		(1.0-0.5*(1.0-cos(3.141592*min(1.0,max(abs(Mₗ),abs(Mᵣ))))))*
+		(1.0-0.5*(1.0+cos(3.141592*min(abs(pₗ/pᵣ),abs(pᵣ/pₗ)))))*
+		(pᵣ-pₗ)/c̄
+
+	ρ̄ = (0.5*ρₗ+0.5*ρᵣ)
+
+	ṁ = c̄*MLP_SLAU + c̄*MRM_SLAU - 
+	0.5*
+	(1.0-Mdash)^2/c̄/ρ̄  * (pᵣ-pₗ)
+	
+
+	ṁ = c̄*MLP_AUSM + c̄*MRM_AUSM  - 0.5*(1.0-Mdash)^2/c̄/ρ̄  * (pᵣ-pₗ)
+	#ṁ = c̄*MLP_SLAU + c̄*MRM_SLAU - 0.25*(1.0-Mdash^2)/c̄/ρ̄  * (pᵣ-pₗ)
+
+	ṁₗ = ρₗ*0.5*(ṁ+abs(ṁ))
+	ṁᵣ = ρᵣ*0.5*(ṁ-abs(ṁ))
+
+	ṁ = ρₗ*c̄*MLP_AUSM + ρᵣ*c̄*MRM_AUSM  - 0.5*(1.0-Mdash)^2/c̄  * (pᵣ-pₗ)
+	if ṁ > 0.0
+		ṁ = ṁ/ρₗ
+	else
+		ṁ = ṁ/ρᵣ
+	end
+	ṁ = c̄*MLP_AUSM + c̄*MRM_AUSM  - 0.5*(1.0-Mdash)^2/c̄ /(0.5*(ρₗ+ρᵣ)) * (pᵣ-pₗ)
+	#ṁ = c̄*MLP_SLAU + c̄*MRM_SLAU  - 0.5*(1.0-Mdash)^2/c̄ /(0.5*(ρₗ+ρᵣ)) * (pᵣ-pₗ)
+	ṁ = ṁ + Uₙ
+	#ṁₗ = 0.5*(ṁ+abs(ṁ))
+	#ṁᵣ = 0.5*(ṁ-abs(ṁ))
+	ṁₗ = ρₗ*0.5*(ṁ+abs(ṁ))
+	ṁᵣ = ρᵣ*0.5*(ṁ-abs(ṁ))
+
+	pₗᵣ = pₗ*p⁺ + pᵣ*p⁻
+	#pₗᵣ = pₗ*0.5 + pᵣ*0.5	
+	#pₗᵣ = 0.5*(pₗ+pᵣ) + KLR*0.5*(ρₗ+ρᵣ)*c̄*(p⁺+p⁻-1.0) - 0.5*(p⁺-p⁻)*(pᵣ-pₗ)
+
+
+	# comp. convective flux
+	flux = zeros(Float64,6,1)
+	flux[1] = ṁₗ + ṁᵣ
+	flux[2] = ṁₗ*uₗ + ṁᵣ*uᵣ + pₗᵣ*nx
+	flux[3] = ṁₗ*vₗ + ṁᵣ*vᵣ + pₗᵣ*ny
+	flux[4] = ṁₗ*wₗ + ṁᵣ*wᵣ + pₗᵣ*nz
+	flux[5] = ṁₗ*Hₜₗ + ṁᵣ*Hₜᵣ
+	flux[6] = ṁₗ*Y₁ₗ + ṁᵣ*Y₁ᵣ
+
+	return flux
+
+
+end
+
+
+
 
 function YYL_Riemann(
     pₗ::Float64,uₗ::Float64,vₗ::Float64,wₗ::Float64,
@@ -170,6 +329,8 @@ function YYL_Riemann(
 
 	MLPL = fa1*MLP_AUSM + (1.0-fa1)*MLP_SLAU
 	MRMR = fa1*MRM_AUSM + (1.0-fa1)*MRM_SLAU
+	
+	Mdash = min(1.0,KLR/c̄)
 
 	ṁ = ρₗ*c̄*MLPL + ρᵣ*c̄*MRMR - 
 		0.5*
@@ -177,6 +338,8 @@ function YYL_Riemann(
 		(1.0-0.5*(1.0+cos(3.141592*min(abs(pₗ/pᵣ),abs(pᵣ/pₗ)))))*
 		(pᵣ-pₗ)/c̄
 
+
+#=
 	Mₗ⁺ = 0.5*(Mₗ+abs(Mₗ))
 	Mᵣ⁻ = 0.5*(Mᵣ-abs(Mᵣ))
 	ṁₗ = 0.0
@@ -188,19 +351,36 @@ function YYL_Riemann(
 		ṁₗ = (ρₗ*c̄*Mₗ⁺)*( w*(1.0+fL) )
 		ṁᵣ = ṁ - (ρᵣ*c̄*Mₗ⁺)*( w*(1.0+fL)-fL+fR )
 	end
+=#
+	#ṁₗ = ρₗ*c̄*MLP_AUSM
+	#ṁᵣ = ρᵣ*c̄*MRM_AUSM
 	
 
 	fa2 = w
 	gam = 0.6
 
-	pₗᵣ = 0.5*(pₗ+pᵣ) - 
-			fa2*(KLR/c̄)*0.5*p⁺*p⁻*0.5*(pₗ+pᵣ)/c̄*(Uₙᵣ-Uₙₗ) + 
-			max(0.2,gam)*(KLR/c̄)*0.5*(pₗ+pᵣ)*(p⁺+p⁻-1.0) - 
-			0.5*(p⁺-p⁻)*(pᵣ-pₗ)
+	#pₗᵣ = 0.5*(pₗ+pᵣ) - 
+	#		fa2*(KLR/c̄)*0.5*p⁺*p⁻*0.5*(pₗ+pᵣ)/c̄*(Uₙᵣ-Uₙₗ) + 
+	#		max(0.2,gam)*(KLR/c̄)*0.5*(pₗ+pᵣ)*(p⁺+p⁻-1.0) - 
+	#		0.5*(p⁺-p⁻)*(pᵣ-pₗ)
+			
+	#pₗᵣ = 0.5*(pₗ+pᵣ) - 0.5*KLR/c̄*0.5*p⁺*p⁻*0.5*(pₗ+pᵣ)/c̄*(Uₙᵣ-Uₙₗ) + 
+	#0.5*(KLR/c̄)*0.5*(pₗ+pᵣ)*(p⁺+p⁻-1.0) - 0.5*(p⁺-p⁻)*(pᵣ-pₗ)
 
 	#pₗᵣ = 0.5*(pₗ+pᵣ) + KLR*0.5*(ρₗ+ρᵣ)*c̄*(p⁺+p⁻-1.0) - 0.5*(p⁺-p⁻)*(pᵣ-pₗ)
 
-	#pₗᵣ = pₗ*p⁺ + pᵣ*p⁻
+	#ρ̄ = 1.0/(0.5/ρₗ+0.5/ρᵣ)
+	ρ̄ = (0.5*ρₗ+0.5*ρᵣ)
+	ṁ = c̄*MLP_SLAU + c̄*MRM_SLAU - 
+	0.5*
+	(1.0-Mdash)^2/c̄/ρ̄  * (pᵣ-pₗ)
+
+	ṁₗ = ρₗ*0.5*(ṁ+abs(ṁ))
+	ṁᵣ = ρᵣ*0.5*(ṁ-abs(ṁ))
+
+	pₗᵣ = pₗ*p⁺ + pᵣ*p⁻
+
+
 	#pₗᵣ = 0.5*(pₗ + pᵣ)
 	#=
 	ṁ = ρₗ*c̄*MLP_SLAU + ρᵣ*c̄*MRM_SLAU - 
@@ -213,6 +393,10 @@ function YYL_Riemann(
 		ṁᵣ = ṁ #- (ρᵣ*c̄*Mₗ⁺)*( w*(1.0+fL)-fL+fR )
 	end
 	=#
+
+	#ṁₗ = MLP_AUSM*c̄*ρₗ
+	#ṁᵣ = MRM_AUSM*c̄*ρᵣ
+
 #=
 	UU = 0.5*(Uₙₗ+Uₙᵣ)
 	if UU > 0.0
@@ -223,6 +407,7 @@ function YYL_Riemann(
 		ṁᵣ = ρᵣ * UU
 	end
 =#
+
 	#rhohat = 0.5*(ρₗ+ρᵣ)
     #gam2 = 0.5*(1.0-tanh(15.0*(min(abs(pₗ/pᵣ),abs(pᵣ/pₗ)))+0.0))
     #gam = max( 0.5, gam2 ) 
@@ -241,6 +426,64 @@ function YYL_Riemann(
     return flux
 
 end
+
+
+
+
+
+
+
+
+function KT_KNP(
+    pₗ,uₗ,vₗ,wₗ,Tₗ,Y₁ₗ,ρₗ,Hₜₗ,cₗ,
+    pᵣ,uᵣ,vᵣ,wᵣ,Tᵣ,Y₁ᵣ,ρᵣ,Hₜᵣ,cᵣ,
+    Lco,Uco,Δt,
+    w₁,w₂,cpi2, Uₙ,
+    nx,ny,nz
+)
+
+	Uₙₗ = uₗ*nx + vₗ*ny + wₗ*nz
+	Uₙᵣ = uᵣ*nx + vᵣ*ny + wᵣ*nz
+
+	Fmax =  max(max(Uₙₗ+cₗ,Uₙᵣ+cᵣ),0.0)
+	Fmin = -min(min(Uₙₗ-cₗ,Uₙᵣ-cᵣ),0.0)
+
+	α⁺ = Fmax / (Fmax+Fmin)
+	α⁻ = Fmin / (Fmax+Fmin)
+	α⁺⁻ = Fmax*Fmin / (Fmax+Fmin)
+
+	ϕ⁺ = ρₗ * (α⁺ * Uₙₗ + α⁺⁻)
+	ϕ⁻ = ρᵣ * (α⁻ * Uₙᵣ - α⁺⁻)
+
+	ṁₗ = ϕ⁺
+	ṁᵣ = ϕ⁻
+	
+	#ṁ = ϕ⁺ + ϕ⁻
+	#ṁₗ = 0.5*(ṁ+abs(ṁ))
+	#ṁᵣ = 0.5*(ṁ-abs(ṁ))
+
+	
+	pₗᵣ = 0.5*(pₗ + pᵣ)
+
+	# comp. convective flux
+	flux = zeros(Float64,6,1)
+	flux[1] = ṁₗ + ṁᵣ
+	flux[2] = ṁₗ*uₗ + ṁᵣ*uᵣ + pₗᵣ*nx
+	flux[3] = ṁₗ*vₗ + ṁᵣ*vᵣ + pₗᵣ*ny
+	flux[4] = ṁₗ*wₗ + ṁᵣ*wᵣ + pₗᵣ*nz
+	flux[5] = ṁₗ*Hₜₗ + ṁᵣ*Hₜᵣ
+	flux[6] = ṁₗ*Y₁ₗ + ṁᵣ*Y₁ᵣ
+
+	return flux
+
+
+end
+
+
+
+
+
+
 
 
 function SLAU2_HR(
@@ -282,24 +525,25 @@ function SLAU2_HR(
         M̄⁻ = Mₗᵣ
     end
 
-	#KLR = sqrt(0.5*(uₗ^2+vₗ^2+wₗ^2+uᵣ^2+vᵣ^2+wᵣ^2))
-	#g = -max(min(Mₗ,0.0),-1.0)*min(max(Mᵣ,0.0),1.0)
-	#Mdash = min(1.0,KLR/c̄)
-	#Vn = (ρₗ*abs(Uₙₗ)+ρᵣ*abs(Uₙᵣ)) / (ρₗ+ρᵣ)
-	#Vnp = (1.0-g)*Vn + g*abs(Uₙₗ)
-	#Vnm = (1.0-g)*Vn + g*abs(Uₙᵣ)
-	#mdot = 0.5*(ρₗ*(Uₙₗ+Vnp)+ρᵣ*(Uₙᵣ-Vnm)-(1.0-Mdash)^2/c̄*(pᵣ-pₗ))
+	KLR = sqrt(0.5*(uₗ^2+vₗ^2+wₗ^2+uᵣ^2+vᵣ^2+wᵣ^2))
+	g = -max(min(Mₗ,0.0),-1.0)*min(max(Mᵣ,0.0),1.0)
+	Mdash = min(1.0,KLR/c̄)
+	Vn = (ρₗ*abs(Uₙₗ)+ρᵣ*abs(Uₙᵣ)) / (ρₗ+ρᵣ)
+	Vnp = (1.0-g)*Vn + g*abs(Uₙₗ)
+	Vnm = (1.0-g)*Vn + g*abs(Uₙᵣ)
+	mdot = 0.5*(ρₗ*(Uₙₗ+Vnp)+ρᵣ*(Uₙᵣ-Vnm)-(1.0-Mdash)^2/c̄*(pᵣ-pₗ))
 
-	ṁₗ = c̄ * ρₗ * M̄⁺
-	ṁᵣ = c̄ * ρᵣ * M̄⁻
-	#ṁₗ = 0.5*(mdot+abs(mdot))
-	#ṁᵣ = 0.5*(mdot-abs(mdot))
+	#ṁₗ = c̄ * ρₗ * M̄⁺
+	#ṁᵣ = c̄ * ρᵣ * M̄⁻
+	ṁₗ = 0.5*(mdot+abs(mdot))
+	ṁᵣ = 0.5*(mdot-abs(mdot))
 	#Kᵤ = 0.5
 	#pᵤ = -2.0 * Kᵤ * p⁺ * p⁻ * ρ̄  * c̄ * (Uₙᵣ-Uₙₗ)
 	#pₗᵣ = p⁺*pₗ + p⁻*pᵣ +  pᵤ * ϕᵤ
 
-	#pₗᵣ = 0.5*(pₗ+pᵣ) - 0.5*KLR/c̄*0.5*p⁺*p⁻*0.5*(pₗ+pᵣ)/c̄*(Uₙᵣ-Uₙₗ) + 
-	#0.5*(KLR/c̄)*0.5*(pₗ+pᵣ)*(p⁺+p⁻-1.0) - 0.5*(p⁺-p⁻)*(pᵣ-pₗ)
+	pₗᵣ = 0.5*(pₗ+pᵣ) - 0.5*KLR/c̄*0.5*p⁺*p⁻*0.5*(pₗ+pᵣ)/c̄*(Uₙᵣ-Uₙₗ) + 
+	0.5*(KLR/c̄)*0.5*(pₗ+pᵣ)*(p⁺+p⁻-1.0) - 0.5*(p⁺-p⁻)*(pᵣ-pₗ)
+	#=
 	UU = 0.5*(Uₙₗ+Uₙᵣ)
 	if UU > 0.0
 		ṁₗ = ρₗ * UU
@@ -312,6 +556,7 @@ function SLAU2_HR(
 	#pₗᵣ = pₗ*p⁺ + pᵣ*p⁻
 
 	pₗᵣ = 0.5*(pₗ + pᵣ)
+	=#
 
 	# comp. convective flux
     flux = zeros(Float64,6,1)

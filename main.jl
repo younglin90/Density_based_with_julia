@@ -13,6 +13,9 @@ include("./residual_norm.jl")
 include("./EOS.jl")
 
 using Plots
+using LinearAlgebra
+using SparseArrays
+using IterativeSolvers
 
 function main()
 
@@ -21,12 +24,12 @@ function main()
         #⬜
         #◽
 
-    Nx = 100
+    Nx = 500
     Ny = 1
     Nz = 1
-    Lx = 1.0
-    Ly = 1.0
-    Lz = 0.5
+    Lx = 2.0
+    Ly = 0.1
+    Lz = 0.1
     realMaxIter = 1000000
     pseudoMaxIter = 30
     pseudoMaxResidual = -4.0
@@ -35,7 +38,7 @@ function main()
     iterCFL0 = 0
     CFL0 = 0.0001
     CFL = 0.1
-    Δt = 1.e-7
+    Δt = 1.e-10
     Lco = 1.0
     Uco = 500.0
 
@@ -108,7 +111,7 @@ function main()
     end
 =#
 
-#=
+
     # 1D high pressure air & low pressure water
     for cell in cells
         if cell.x < 0.5
@@ -129,7 +132,7 @@ function main()
             cell.var[👉.α₁] = 1.0
         end
     end
-=#
+
 
 #=
 
@@ -154,8 +157,10 @@ function main()
         end
     end
 
+
 =#
 
+#=
     # One-dimensional helium-bubble in air
     for cell in cells
         
@@ -182,7 +187,7 @@ function main()
             cell.var[👉.α₁] = 1.0
         end
     end
-
+=#
 
 
     
@@ -201,7 +206,7 @@ function main()
     while(
         👉.realIter <= 👉.realMaxIter
     )
-        println("real-time Step: $(👉.realIter) \t Time: $(👉.time)")
+        println("real-time Step: $(👉.realIter) \t Time: $(👉.time) \t time-step: $(👉.Δt)")
 
         if 👉.realIter < iterCFL0
             👉.CFL = CFL0
